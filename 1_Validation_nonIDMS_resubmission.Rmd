@@ -25,13 +25,13 @@ affiliation: University of Cambridge
 editor_options:
   chunk_output_type: console
 endnote: no
-fontfamily: mathpazo
+mainfont: Arial
 fontsize: 11pt
 geometry: margin=1in
 keywords: Glomerular Filtration Rate, CamGFR, CKD-EPI, Carboplatin
 bibliography: /Users/willia01/Documents/Mendeley_Desktop/Bibtex/Validation_1_References.bib
 csl: /Users/willia01/Documents/Mendeley_Desktop/Bibtex/american-medical-association.csl
-abstract: This document is a supplemental file for the paper "Multicentre validation of the CamGFR model for estimated glomerular filtration rate" and provides additional methods, results, figures and tables. The .Rmd file format contains the R code used for this manuscript and is available at [github.com/EdwardHWilliams/CamGFRValidationNonIDMS](https://github.com/EdwardHWilliams/CamGFRValidationNonIDMS).
+abstract: This document is the supplemental file for the paper "Multicentre validation of the CamGFR model for estimated glomerular filtration rate" and provides additional methods, results, figures and tables. The .Rmd file format contains the R code used for this manuscript. Table S5 contains all results, but for space reasons only Table S5a is included in this document. The entire Table S5 and all R files are available on request and deposited at [github.com/EdwardHWilliams/CamGFRValidationNonIDMS](https://github.com/EdwardHWilliams/CamGFRValidationNonIDMS).
 ---
 
 \beginsupplement
@@ -48,6 +48,9 @@ library(kableExtra)
 library(tidyverse)
 library(ggpubr)
 library(openxlsx)
+library(cowplot)
+library(grid)
+library(ggthemes)
 
 # Load the data and helper function
 source("Clean_data.R")
@@ -69,23 +72,24 @@ Next, patients with data outside the inclusion criteria were removed. The inclus
 \item Serum creatinine value between 18 \textmu mol/L (0.2 mg/dL) and 400 \textmu mol/L (4.5 mg/dL)
 \item Age of 18 years or older
 \item Creatinine and GFR measurements performed within 30 days of each other 
+\item If a patient had multiple GFR measurements, only the first one would be included
 \end{itemize}
-The creatinine cut-off values were chosen because the lower value is the typical detection threshold on the measurement assay and the upper value is 3-4 times the upper limit of normal in most centres, thus corresponding to a value at which most clinicians would consider kidney function severely impaired.
+The creatinine cut-off values were chosen because the lower value is the typical detection threshold on the measurement assay and the upper value is 3-4 times the upper limit of normal in most centres, thus corresponding to a value at which most clinicians would consider kidney function severely impaired. The 30 days was selected to minimise errors caused by changing creatinine. We confirmed that a 30 day window before and after mGFR was reasonable for creatinine measurements by comparing accuracy in seven different windows relating to the difference in measurement dates. We detected no change in accuracy (Figure \ref{fig:performace_date_diff}). 
 
-All creatinine data were either measured using a non-IDMS traceable measurement or the measurement procedure was not known. Table \ref{tab:creat_info} summarises the information on the creatinine measurement for each centre.
+All creatinine data were either measured using a non-IDMS traceable measurement or the measurement procedure was not known, but likely to be non-IDMS traceable due to the dates of measurements. Table \ref{tab:creat_info} summaries the information on the creatinine measurement for each centre.
 
 \begin{table}[H]
 \caption{Creatinine methods used at each centre}
 \begin{tabular}{|l|l|l|}
 \hline
-\textbf{Centre} & \textbf{Date range}                                                           & \textbf{Creatinine measurment method}                                                                                                                                                                                               \\ \hline 
+\textbf{Centre} & \textbf{Date range}                                                           & \textbf{Creatinine measurement method}                                                                                                                                                                                               \\ \hline 
 
 Cambridge       & 2013                                                                          & Dimension RxL compensated Jaffe, not IDMS-traceable                                                                                                                                                                                                                  \\ \hline
 Edinburgh       & 2011 - 2017                                                                   & \begin{tabular}[c]{@{}l@{}}An Abbott Architect assay using the Jaffe method;  \\ 
 not IDMS-traceable \end{tabular}                                                                                             \\ \hline
 London-Barts    & 2010 - 2017                                                                   & Unknown method; IDMS usage not known                                                                                                                                                                                                                  \\ \hline
 Manchester      & 2012 - 2016                                                                   & \begin{tabular}[c]{@{}l@{}} Jaffe method  using O’Leary reagent; \\
-not IDMS-tracable  \end{tabular}                                                                                                                                                          \\ \hline
+not IDMS-traceable  \end{tabular}                                                                                                                                                          \\ \hline
 Melbourne       & 2000 - 2005                                                                   & Jaffe method; not IDMS-traceable \\ \hline
 Southampton     & 1999 - 2012                                                                   & \begin{tabular}[c]{@{}l@{}}Jaffe method; given the date range, most, \\
 if not all, not IDMS-traceable\end{tabular}                                                                \\ \hline
@@ -106,7 +110,8 @@ New_nonIDMS_data <- All_data %>%
   filter(Creatinine_type != "IDMS") %>%
   mutate(Date_GFR_diff = c(NA, diff(Date_GFR))) %>%
   ungroup() %>%
-  filter(Date_GFR_diff > 365 | is.na(Date_GFR_diff)) %>%
+  # filter(Date_GFR_diff > 365 | is.na(Date_GFR_diff)) %>%
+  filter(GFR_index == 1) %>%
   filter(Creat*88.4 > 18) %>% # remove creatinien values less than 18 as some centres do not report creatinine values lwer than this value
   filter(Creat*88.4 < 400) %>% # removed as
   filter(!Centre %in% c("Adden_old", "Glasgow")) %>% # remove data from previous study 
@@ -128,9 +133,53 @@ New_nonIDMS_data <- All_data %>%
 ```
 
 
+```{r creat_GFR_date_diff, cache = T, echo = F, warning=F, include=F}
+
+GFR_creatinine_date_diff_plot <- 
+  New_nonIDMS_data %>% 
+  select(Date_GFR, Date_creat, Centre) %>%
+  mutate(Date_diff = as.numeric(Date_GFR - Date_creat)) %>%
+  filter(!is.na(Date_diff)) %>%
+  select(Date_diff, Centre) %>%
+  # table() %>%
+  # as.data.frame() %>%
+  ggplot(aes(x  = Date_diff,  fill = Centre)) +
+  geom_bar() + 
+  ggplot_theme() + 
+  scale_fill_manual(values = tol5qualitative) + 
+  xlab("GFR Date - Creatinine Date [days]")
+
+date_diff = New_nonIDMS_data %>% 
+  select(Date_GFR, Date_creat, Centre) %>%
+  mutate(Date_diff = Date_GFR - Date_creat) %>%
+  filter(!is.na(Date_diff)) %>%
+  select(Date_diff) %>%
+  table() 
+
+date_diff_abs = New_nonIDMS_data %>% 
+  select(Date_GFR, Date_creat, Centre) %>%
+  mutate(Date_diff = Date_GFR - Date_creat) %>%
+  filter(!is.na(Date_diff)) %>%
+  pull(Date_diff) %>%
+  abs() %>%
+  table() 
+
+abs_per = date_diff_abs/sum(date_diff_abs)*100
+cumsum(abs_per) %>% as.data.frame()
+
+```
+
+
+```{r PLOT_date_diff, echo = F, include = T, fig.width=6, fig.height=3, fig.cap="\\label{fig:date_diff_barplot}Barplot of the time difference between GFR and serum creatinine measurements for each patient. A negative difference indicates that the serum creatinine was measured after the GFR. Some centres only reported time ranges for the creatinine, i.e. that it was measured within 30 days of GFR, and not specific dates. Data from these centres were not included for this barplot."}
+GFR_creatinine_date_diff_plot
+```
+
+Figure \ref{fig:date_diff_barplot} shows the difference in time between the GFR and creatinine measurements days. Most patients had their creatinine measured on, or in, the week after the nuclear medicine GFR, with this being the case for all patients from Manchester. 
+
 Table 1 in the main manuscript provides the number of patients in different categorical groups and the summary statistics for the continuous variables (GFR, age, serum creatinine, body surface area (BSA), height and weight) for all patients. Here we provide the summary statistics for patients split into different centres (Table \ref{tab:summary_centre}).
 
 ```{r data_characteristic_tables, cache = T, echo = F, warning=F}
+# Msnuscript Table 1 a
 Samples_per_centre <- New_nonIDMS_data %>%
   group_by(Centre) %>%
   summarise("Total" = length(GFR),
@@ -143,6 +192,7 @@ Samples_per_centre <- New_nonIDMS_data %>%
   rbind(c("Total", sum(.$`Total`), sum(.$`Solid tumour`), sum(.$Hematology),
           sum(.$`Non-cancer`), sum(.$Female), sum(.$`Repeat patients`), sum(.$`Race - Black`)))
 
+# Msnuscript Table 1 b
 Summary_variables <- New_nonIDMS_data %>%
   mutate(Creatinine = Creat*88.4) %>%
   select("GFR [ml/min]" = GFR, "Creatinine [\u00B5mol/L]" = Creatinine, 
@@ -199,7 +249,7 @@ Variable_summary_by_patient_type <- New_nonIDMS_data %>%
 ```{r print_table1, echo=F, eval =F}
 kable(Samples_per_centre, format = "markdown")
 Summary_variables %>%
-  select(-c(3,5)) %>%
+  select(-c(3)) %>%
   format(digits = 2, drop0trailing = TRUE) %>%
   t() %>%
   as.data.frame() %>%
@@ -216,7 +266,7 @@ table <- Variable_summary_by_centre %>%
 colnames(table) <- c("Mean", "SD", "Minimim", "Q1", "Median", "Q3", "Maximum")
 table %>%  
   kable("latex", align = "r", longtable = T, booktabs = T, 
-      caption = "\\label{tab:summary_centre}Summary characteristics for patients from each centre separately") %>%
+      caption = "\\label{tab:summary_centre}Summary characteristics from each centre") %>%
   kable_styling(latex_options = c("repeat_header")) %>%
   group_rows("Cambridge", 1, 6, latex_gap_space = "0.6em", hline_after = T) %>%
   group_rows("Edinburgh", 7, 12, latex_gap_space = "0.6em", hline_after = T) %>%
@@ -317,7 +367,7 @@ saveWorkbook(T1, paste0(fig_export_dir, "Data_summary_main.xlsx"), overwrite = T
 
 To facilitate data comparison graphically, Figure \ref{fig:centre_boxplot} displays the data from Table \ref{tab:summary_centre} in several boxplots. Patients from Southampton and London-Barts have a higher GFR, height and weight and a lower age than patients from other centres. This is attributable to the fact that the data from these centres were from patients with seminoma only and hence were typically from young men. The panel of log(creatinine) illustrates the inter-centre variability.
 
-```{r data_characteristics_plot_1, echo = F, fig.width=9, fig.height=5, fig.cap="\\label{fig:centre_boxplot}Boxplot of the continuous variables split by centre. Creatinine has been log transformed."}
+```{r data_characteristics_plot_1, echo = F, fig.width=9, fig.height=5, message=F, fig.cap="\\label{fig:centre_boxplot}Boxplot of the continuous variables split by centre. Creatinine has been log transformed."}
 tol7qualitative=c("#332288", "#88CCEE", "#44AA99", "#117733", "#DDCC77","#CC6677","#AA4499")
 
 Boxplots_variables <- New_nonIDMS_data %>%
@@ -345,7 +395,7 @@ Boxplots_variables
 
 Figure \ref{fig:boxplot_creat} show boxplots for log(creatinine) split by centre for all patients and patients with selected diagnoses respectively. As patients with similar diagnoses should be approximately matched for the other variables, the plots facilitate further comparison of serum creatinine differences between centres.
 
-```{r PLOT_analyse_creatinine, echo = F,  fig.width=9, fig.height=5, results = 'hide', message = F, fig.cap="\\label{fig:boxplot_creat}Boxplots of the serum creatinine of patients from different centres. Boxplots are shown for all patients combined and for patients with Germ Cell Tumours (GCT), Bladder or Transitional cell cancer (TCC), Thoracic cancer, Gastro-oesophageal cancer and Head and Neck cancer. The notches in the boxplots are $1.58 \\text{IQR} / \\sqrt{n}$ (where $n$ is the number of patient used for the given boxplot and IQR is the inter quartile range); they provide both an approximate 95% confidence interval for the median and an indication of the number of patients used for the given boxplot."}
+```{r PLOT_analyse_creatinine, echo = F,  fig.width=9, fig.height=5, results = 'hide', message = F, fig.cap="\\label{fig:boxplot_creat}Boxplots of the serum creatinine of patients from different centres. Boxplots are shown for all patients combined and for patients with Germ Cell Tumours (GCT), Bladder or Transitional cell cancer (TCC), Thoracic cancer, Gastro-oesophageal cancer and Head and Neck cancer. The notches in the boxplots are $1.58 \\text{IQR} / \\sqrt{n}$ (where $n$ is the number of patients used for the given boxplot and IQR is the inter quartile range); they provide both an approximate 95% confidence interval for the median and an indication of the number of patients used for the given boxplot."}
 
 tol7qualitative=c("#332288", "#88CCEE", "#44AA99", "#117733", "#DDCC77","#CC6677","#AA4499")
 
@@ -517,13 +567,16 @@ data.frame(
 
 # Comparison of models
 
-We compared the CamGFR [@Janowitz2017a] model with the the following published models: CKD-EPI [@Levey2009], MDRD (186 version) [@Levey2016], Wright [@Wright2001a], Cockcroft-Gault [@Cockcroft1976], Jelliffe [@Jelliffe1973], Mayo [@Rule2004] and Martin [@Martin1998]. If these equations estimated BSA-normalised GFR (CKD-EPI, MDRD, Jelliffe and Mayo), the estimated value was subsequently unnormalised by multiplying the estimated value by $1.73/\textrm{BSA}$, where $\textrm{BSA}$ is the patient's body surface area estimated using the DuBois-DuBois equation: 
+We compared the CamGFR [@Janowitz2017a] model with the the following published models: CKD-EPI [@Levey2009], MDRD (186 version) [@Levey1999], Wright [@Wright2001], Cockcroft-Gault [@Cockcroft1976], Jelliffe [@Jelliffe1973], Mayo [@Rule2004] and Martin [@Martin1998]. If these equations estimated BSA-normalised GFR (CKD-EPI, MDRD, Jelliffe and Mayo), the estimated value was subsequently unnormalised by multiplying the estimated value by $1.73/\textrm{BSA}$, where $\textrm{BSA}$ is the patient's body surface area estimated using the DuBois-DuBois equation: 
 $$\textrm{BSA} = 0.20247 \times \textrm{Height}^{0.725} \times \textrm{Weight}^{0.425}$$ 
 where height is measured in metres and weight is measured in kg. Some of these models (Cockroft-Gault and Jelliffe) were developed to estimate creatinine clearance and not GFR, where creatinine clearance is itself a biased estimator of GFR. These models are included as they are still used to estimate GFR by some centres, clinical trial groups, and in other settings. 
 
-The equations were compared using three metrics: the root-mean-squared-error (RMSE), median residual value, and the residual interquartile range (IQR). These three metrics are estimators for a model’s accuracy, bias and precision respectively. A 95% confidence interval was calculated for each of these metrics using the bootstrap resampling procedure. Specifically, 2,000 resamples with replacement (where the sample size was the same as the number of data points) were taken from the data used to calculate the metric. The metric was then calculated for each of these 2,000 samples and using the normal approximation a confidence interval was constructed [@Davison2013]. The seed was reset to be the same when sampling the 2,000 replicates for the different metrics.
+The equations were compared using three metrics: the root-mean-squared-error (RMSE), median residual value, and the residual interquartile range (IQR). These three metrics are estimators for a model’s accuracy, bias and precision respectively. A 95% confidence interval was calculated for each of these metrics using the bootstrap resampling procedure. Specifically, 2,000 resamples with replacement (where the sample size was the same as the number of data points) were taken from the data used to calculate the metric. The metric was then calculated for each of these 2,000 samples and using the normal approximation a confidence interval was constructed [@Davison2013]. The same seed was used for different metrics.
 
 The main results of this analysis are reported in Figure 1 (results for patients split by centre) in the main manuscript along with Figures \ref{fig:performace_diagnosis} (results for patients split by diagnosis), \ref{fig:performace_age} (results for patients split by age) and \ref{fig:performace_BSA} (results for patients split by BSA). Additionally, all numerical results are reported in Table S5 (an additional file). Table S5 gives the results for all equations above whereas the Figures only compare the performance of CamGFR, CKD-EPI, MDRD, Wright and Cockroft-Gault. 
+
+Additionally, we compared the performance of the CamGFR and CKD-EPI models with the aid of a Bland-Altman plot (or MA plot) and residual vs fitted plots (Figure \ref{fig:CKD_CamGFR_plot}). The Bland-Altman plot is used to contrast accuracy, whereas the fitted vs residual plot is used to to assess the performance of a model. The feature which is most noticeable from  Figure \ref{fig:CKD_CamGFR_plot} is that for low eGFR (approximately less than 50 ml/min),  CamGFR estimates larger values than CKD-EPI. The inverse is true for high eGFR, culminating in a sight overall bias for eGFR to be higher in the CKD-EPI than CamGFR. The variability between the two models increases as eGFR increases. This can be partly explained by the fact that CamGFR and CKD-EPI model GFR on a square root and log scale respectively. The fitted vs residual plots are similar for the two models. 
+
 
 ```{r performance_nonIDMS_data_tables, echo=F, cache=T, include=FALSE}
 
@@ -535,14 +588,19 @@ Table_df <- New_nonIDMS_data %>%
   # filter(Centre != "Melbourne") %>%
   group_by(Diagnosis) %>% mutate(n = n()) %>% ungroup() %>%
   mutate(Diagnosis = ifelse(n < 50, "Other", Diagnosis)) %>%
+  mutate(Date_diff = as.numeric(Date_GFR - Date_creat)) %>%
+  mutate(Date_diff_group = cut(Date_diff, breaks = c(-31, -8, -3, -1, 0, 2, 7, 30))) %>%
+  mutate(Date_diff_group = as.character(Date_diff_group)) %>%
+  mutate(Date_diff_group = ifelse(is.na(Date_diff_group), "NA", Date_diff_group)) %>%
   bind_cols(GFR_fitted_values_eth(.)) %>%
   select(WJ, CKD_adj, MDRD_adj, Wright, Cockcroft, Jelliffe_adj, Mayo_adj, Martin,
          # LM_adj, FAS_adj, 
-         GFR, Centre, Age, Creat, Diagnosis, Patient_type, BSA) %>%
+         GFR, Centre, Age, Creat, Diagnosis, Patient_type, BSA, Sex, Date_diff,
+         Date_diff_group) %>%
   gather(key = equation, value = fitted, -GFR, -Centre, -Age, -BSA, -Creat, -Diagnosis,
-         -Patient_type) %>%
+         -Patient_type, -Sex, -Date_diff, -Date_diff_group) %>%
   mutate(GFR = (GFR), fitted = (fitted)) %>%
-  mutate(resid = GFR - fitted)
+  mutate(resid = GFR - fitted) 
 
 Clean_output_table <- function(table){
   table %>%
@@ -568,21 +626,21 @@ Clean_output_table <- function(table){
            -P20_upr, -P20)
 }
 
-
 Results_nonIDMS_data <- Table_df %>%
   group_by(equation) %>%
   Statistic_summary_withP20_both() %>%
+  # select(-P20, -P20_lwr, -P20_upr)
   select(-P20_dose, -P20_dose_lwr, -P20_dose_upr) %>%
   arrange(RMSE) 
 
 Clean_Results_nonIDMS_data <-
   Clean_output_table(Results_nonIDMS_data)
 
-
 Results_nonIDMS_data_type <- Table_df %>%
   group_by(Patient_type, equation) %>%
   Statistic_summary_withP20_both() %>%
   arrange(Patient_type, RMSE) %>%
+  # select(-P20, -P20_lwr, -P20_upr)
   select(-P20_dose, -P20_dose_lwr, -P20_dose_upr)
 Clean_Results_nonIDMS_data_type <-
   Clean_output_table(Results_nonIDMS_data_type)
@@ -591,6 +649,7 @@ Results_nonIDMS_data_centre <- Table_df %>%
   group_by(equation, Centre) %>%
   Statistic_summary_withP20_both() %>%
   arrange(Centre, RMSE) %>%
+  # select(-P20, -P20_lwr, -P20_upr)
   select(-P20_dose, -P20_dose_lwr, -P20_dose_upr)
 Clean_Results_nonIDMS_data_centre <-
   Clean_output_table(Results_nonIDMS_data_centre)
@@ -598,34 +657,130 @@ Clean_Results_nonIDMS_data_centre <-
 Results_nonIDMS_data_pat_type <- Table_df %>%
   group_by(equation, Patient_type) %>%
   Statistic_summary_withP20_both() %>%
-  arrange(Patient_type, RMSE) %>%
-  select(-P20_dose, -P20_dose_lwr, -P20_dose_upr)
-Clean_Results_nonIDMS_data_pat_type <-
-  Clean_output_table(Results_nonIDMS_data_pat_type)
+  arrange(Patient_type, RMSE) 
+  # select(-P20, -P20_lwr, -P20_upr) %>%
+  # select(-P20_dose, -P20_dose_lwr, -P20_dose_upr)
+Clean_Results_nonIDMS_data_pat_type <- 
+  Results_nonIDMS_data_pat_type %>%
+  select(-P20_dose, -P20_dose_lwr, -P20_dose_upr) %>%
+  Clean_output_table()
 
 Results_nonIDMS_data_diagnosis <- Table_df %>%
   group_by(equation, Diagnosis) %>%
   Statistic_summary_withP20_both() %>%
   arrange(Diagnosis, RMSE) %>%
+  # select(-P20, -P20_lwr, -P20_upr)
   select(-P20_dose, -P20_dose_lwr, -P20_dose_upr)
 Clean_Results_nonIDMS_data_diagnosis <-
   Clean_output_table(Results_nonIDMS_data_diagnosis)
+
+Results_nonIDMS_data_sex <- Table_df %>%
+  group_by(equation, Sex) %>%
+  Statistic_summary_withP20_both() %>%
+  arrange(Sex, RMSE) %>%
+  # select(-P20, -P20_lwr, -P20_upr)
+  select(-P20_dose, -P20_dose_lwr, -P20_dose_upr)
+Clean_Results_nonIDMS_data_sex <-
+  Clean_output_table(Results_nonIDMS_data_sex)
+
+
+Results_nonIDMS_data_creat <-  Table_df %>%
+  mutate(Creat_cut = cut_number(Creat, 5)) %>% 
+  group_by(equation, Creat_cut) %>%
+  Statistic_summary_withP20_both() %>%
+  arrange(Creat_cut, RMSE) %>%
+  # select(-P20, -P20_lwr, -P20_upr)
+  select(-P20_dose, -P20_dose_lwr, -P20_dose_upr)
+Clean_Results_nonIDMS_data_creat <-
+  Clean_output_table(Results_nonIDMS_data_creat)
+
+Results_nonIDMS_data_date_diff <- Table_df %>%
+  group_by(equation, Date_diff_group) %>%
+  Statistic_summary_withP20_both() %>%
+  arrange(Date_diff_group, equation) %>%
+  # select(-P20, -P20_lwr, -P20_upr)
+  select(-P20_dose, -P20_dose_lwr, -P20_dose_upr)
+Clean_Results_nonIDMS_data_date_diff <-
+  Clean_output_table(Results_nonIDMS_data_date_diff)
+
 ```
 
 <!-- Figure 1 in the main manuscript shows the results when split by centre. In addition, Figure 4 plot the data the comparison between models with patients split into by cancer diagnosis. We required at least 50 patients to have the given diagnosis all other diagnosis is not included. There are several interesting observations from this Figure. Firstly, CamGFR outperforms all other models in all but 4 of the diagnosis subgroups. Secondly, the performance of all model varies for different diagnosis subgroups. For example, GFR is estimated less well for Germ Cell patients on average and patient with Oesophageal or Gastric cancer are predicted particularly accurately. Bias too tends to fluctuate for all models in different patient diagnosis subgroups. Thirdly, the variability of the accuracy of the models varies between the different diagnosis subgroup, with Hematological or Sarcoma cancers having a particularly high variance for the accuracy in all models. -->
 
-```{r Load_plots, include=FALSE, message = FALSE, warnings = FALSE, cache=T}
 
-source("1_Validation_paper_figure.R") 
 
+```{r CKD_CamGFR_GFR_plot, echo = F, fig.width=13, fig.height=10, fig.cap="\\label{fig:CKD_CamGFR_plot}Comparison of GFR estimated by CamGFR and CKD-EPI, the two best performing model. A) Bland-Altman plot of GFR estimated using the CamGFR and CKD-EPI models. B) Residual (GFR - eGFR) vs fitted value (eGFR) for both the CamGFR and CKD-EPI models."}
+
+
+plot_df <- New_nonIDMS_data %>%
+  # filter(Centre != "Melbourne") %>%
+  group_by(Diagnosis) %>% mutate(n = n()) %>% ungroup() %>%
+  mutate(Diagnosis = ifelse(n < 50, "Other", Diagnosis)) %>%
+  bind_cols(GFR_fitted_values_eth(.)) %>%
+  select(GFR, CKD_adj, WJ, Centre, Sex)
+
+
+p1 <- plot_df %>%
+  rename("CamGFR" = "WJ", "CKD-EPI" = "CKD_adj") %>%
+  gather(key = model, value = eGFR, "CKD-EPI", "CamGFR") %>%
+  ggplot(aes(x = eGFR , y = GFR - eGFR, colour = Centre)) +
+  geom_hline(yintercept = 0) +
+  geom_point(alpha = 0.5) +
+  facet_wrap(~model) +
+  ggplot_theme() +
+  theme(text = element_text(size = 12),
+        strip.text = element_text(size = 12)) +
+  scale_colour_manual(values = tol7qualitative) + 
+  theme(legend.position = "none") + 
+  theme(text = element_text(size = 14))
+
+
+sd = plot_df %>% 
+  mutate(diff = WJ - CKD_adj) %>% 
+  pull(diff) %>%
+  sd()
+m = plot_df %>% 
+  mutate(diff = WJ - CKD_adj) %>% 
+  pull(diff) %>%
+  mean()
+
+p3 <- ggplot(plot_df, aes(x = (WJ + CKD_adj)/2, y = WJ - CKD_adj, colour = Centre)) + 
+  geom_hline(yintercept = 0) + 
+  geom_point(alpha = 0.5) + 
+  ggplot_theme() +
+  theme(text = element_text(size = 12),
+        strip.text = element_text(size = 12)) +
+  ylab("CamGFR - CKD-EPI") + 
+  xlab("(CamGFR + CKD-EPI)/2") +
+  scale_colour_manual(values = tol7qualitative) + 
+  theme(legend.position = "right") + 
+  geom_hline(yintercept = m + c(-1,0,1)*sd*1.96, linetype = "dashed") + 
+  theme(text = element_text(size = 14))
+
+
+CamGFR_CKDEPI_comparison_plot <- 
+  ggdraw() +
+  draw_plot(p3, 0.2, 0.5, .7, .5) +
+  draw_plot(p1, 0, 0, 1, .5) +
+  draw_plot_label(c("A", "B"), c(.1, 0), c(1, 0.5), size = 18)
+
+CamGFR_CKDEPI_comparison_plot
 
 ```
 
-```{r PLOT_dagnosis, echo = F, fig.width=13, fig.height=10, fig.cap="\\label{fig:performace_diagnosis}Performance of GFR models for patients from different diagnostic subgroups. The results for the CamGFR model and four other commonly used other models (CKD-EPI, Wright, MDRD-186 and Cockcroft-Gault) are displayed. Results for those diagnostic subgroups that had more than 50 patients are shown. (first row) The residual (measured GFR - estimated GFR) median, which is a measure of a model’s bias, is displayed. (second row) The residual interquartile range (IQR), which is a measure of a model’s precision, is displayed. (third row) The root-mean-squared error (RMSE), which is a measure of a model’s accuracy, is displayed. Accuracy is a combination metric of bias and precision. (fourth row) The proportion of patients who have an absolute percentage error more than 20% (1-P20), which reflects clinical robustness by illustrating the proportion of patients with a clinically relevant error, is displayed.The best result would be closest to zero for the residual median, and the smallest value for IQR, RMSE, and 1-P20. All error bars are 95% confidence intervals calculated using bootstrap resampling with 2,000 repetitions and a normal distribution approximation."}
+
+
+```{r Load_plots, include=FALSE, message = FALSE, warnings = FALSE, cache=T}
+source("1_Validation_paper_figure.R") 
+
+```
+
+```{r PLOT_dagnosis, echo = F, fig.width=13, fig.height=10, fig.cap="\\label{fig:performace_diagnosis}Performance of GFR models for patients from different diagnostic subgroups. The results for the CamGFR model and four other commonly used models (CKD-EPI, Wright, MDRD-186 and Cockcroft-Gault) are displayed. Results for those diagnostic subgroups that had more than 50 patients are shown. First row: the residual (measured GFR - estimated GFR) median, which is a measure of a model’s bias, is displayed. Second row: the residual interquartile range (IQR), which is a measure of a model’s precision, is displayed. Third row: the root-mean-squared error (RMSE), which is a measure of a model’s accuracy, is displayed. Accuracy is a combination metric of bias and precision. Fourth row: The proportion of patients who have an absolute percentage error more than 20% (1-P20), which reflects clinical robustness by illustrating the proportion of patients with a clinically relevant error, is displayed. The best result would be closest to zero for the residual median, and the smallest value for IQR, RMSE, and 1-P20. All error bars are 95% confidence intervals calculated using bootstrap resampling with 2,000 repetitions and a normal distribution approximation."}
 plot(plot_diagnosis)
 ```
 
-We analysed performance when patients were split into groups by their age or BSA. Figures \ref{fig:performace_age} and \ref{fig:performace_BSA} show the performance of each model for equally sized subgroups of age and BSA, respectively. The accuracy of all models tends to increase with increasing age and tends to increase with increasing BSA. These observations can be largely explained by the fact that GFR is modelled on the square root scale in the CamGFR model and on the log scale for the CKD-EPI or MDRD models. Patients who are young or have a large BSA also tend to have a higher GFR and patients with a higher GFR will have a less accurate estimated GFR due to modelling on a square-root or log scale.
+We analysed performance when patients were split into groups by their age or BSA. Figures \ref{fig:performace_age}, \ref{fig:performace_BSA}, and \ref{fig:performace_Creat} show the performance of each model for equally sized subgroups of age, BSA, and creatinine respectively. The accuracy of all models tends to increase with increasing age and tends to increase with increasing BSA. These observations can be largely explained by the fact that GFR is modelled on the square root scale in the CamGFR model and on the log scale for the CKD-EPI or MDRD models. Patients who are young or have a large BSA also tend to have a higher GFR and patients with a higher GFR will have a less accurate estimated GFR due to modelling on a square-root or log scale. As discussed in the main manuscript, CamGFR is not the most accurate for the subgroups split by serum creatinine. For the lower two groups CamGFR, is the most accurate model for all subgroups split by serum creatinine. For the two groups with lower creatinine, CamGFR is the most accurate model. In particular, for the group of patients with the lowest serum creatinine values all other models are biased to overestimate GFR.
+
 
 ```{r PLOT_performance_age, echo = F, message = F, warnings = F, fig.width=13, fig.height=10, fig.cap="\\label{fig:performace_age}Comparison of model performance in different age groups. The results for five published models are shown. Patients were split into 10 equally sized groups by their age. \\(*a*,*b*\\] denotes the interval *a* to *b* which is exclusive of the lower and inclusive of the higher age."}
 plot(plot_age)
@@ -634,6 +789,19 @@ plot(plot_age)
 ```{r PLOT_performance_BSA, echo = F, message = F, warnings = F,fig.width=13, fig.height=10, fig.cap="\\label{fig:performace_BSA}Comparison of model performance in different BSA groups. The results for five published models are shown. Patients were split into 10 equally sized groups by their BSA. \\(*a*,*b*\\] denotes the interval *a* to *b* which is exclusive of the lower and inclusive of the higher BSA."}
 plot(plot_BSA) 
 ```
+
+```{r PLOT_performance_Creat, echo = F, message = F, warnings = F, fig.width=13, fig.height=10, fig.cap="\\label{fig:performace_Creat}Comparison of model performance in different BSA groups. The results for five published models are shown. Patients were split into 10 equally sized groups by their BSA. \\(*a*,*b*\\] denotes the interval *a* to *b* which is exclusive of the lower and inclusive of the higher BSA."}
+plot(plot_Creat) 
+```
+
+
+```{r PLOT_performance_data_diff, echo = F, message = F, warnings = F,fig.width=13, fig.height=10, fig.cap="\\label{fig:performace_date_diff}Comparison of model performance patients split by the difference in time between the GFR and creatinine measurement dates. The results for five published models are shown. A negative date difference corresponds to creatinine measured after GFR."}
+plot(plot_date_diff) 
+```
+
+
+
+
 
 P-values for the differences between a statistic for a pair of equations were calculated using a bootstrap procedure described by Efron[@Efron1994]. In this procedure we have two samples $\mathbf{z}$ and $\mathbf{y}$ of lengths $n$ and $m$ respectively, from possibly different probability distributions $F$ and $G$. In our case $F$ and $G$ were the probability distributions of the residuals for the two equations of interest. We tested the null hypothesis $H_0: F = G$, against the alternative hypothesis $H_0: F \neq G$. Let $x = [z,y]$, and chose a test statistic $t(\mathbf{x})$, which had the form $t(\mathrm{x}) = f(\mathrm{z}) - f(\mathrm{y})$, where the function $f(\mathrm{w})$ was either RMSE, median or IQR. Using the following procedure an approximate p-value was calculated by: 
 
@@ -646,21 +814,7 @@ $$ \widehat{p} =\frac{1 + \sum_{r=1}^R \mathbb{1}_{\left| t_r^*\right| \geq \lef
 where $t_{obs} = t(\mathrm{x}) = f(\mathrm{z}) - f(\mathrm{y})$ is the observed value of the statistic and $\mathbb{1}_A$ is the indicator function which returns $1$ if $A$ is true and $0$ otherwise. The absolute values of $t$ are considered so as to perform a two-sided test. 
 \end{itemize}
 
-It should be noted that that the hypothesis test is strictly testing the null hypothesis $H_0 :F=G$ and not the null hypothesis $H_0: f(Z) = f(G)$. When the approximate p-values are calculated with the statistic 1-P20 (the proportion of patients with an absolute percentage error more than 20%), $z$ and $y$ would be the vectors of percentage differences between the fitted and measured dose values. Approximate p-values (with $R = 10,000$) are given in Tabel S5 (an additional file).
-
-
-<!-- P-values for the difference between two pairs of statistics were calculated using a bootstrap method [@Davison2013]. This empirical p-value is calculated by taking 2000 bootstrap replicates of the pair of statistics. The two-sided p-value is then calculated as: -->
-
-<!-- $$ -->
-<!-- \text{p-value} = 1 - \left| 2\frac{ \sum_{i=1}^R \mathbb{1}_{t_i \geq 0}(t_i)}{R} -1   \right| -->
-<!-- $$ -->
-<!-- where:  -->
-<!-- \begin{itemize} -->
-<!-- \item $t_i$ is the difference between the two statistics for the $i$ replicate -->
-<!-- \item $R$ is the number of bootstrap replicates, which in this case was 2000.  -->
-<!-- \item $\mathbb{1}_A(x)$ is the indicator functin which returns $1$ if $x \in A$ and $0$ otherwise  -->
-<!-- \end{itemize} -->
-<!-- Results for all comparisons can be found in the Supplemental Table 1 (an additional file). -->
+It should be noted that that the hypothesis test is strictly testing the null hypothesis $H_0 :F=G$ and not the null hypothesis $H_0: f(Z) = f(G)$. When the approximate p-values are calculated with the statistic 1-P20 (the proportion of patients with an absolute percentage error more than 20%), $z$ and $y$ would be the vectors of percentage differences between the fitted and measured dose values. Approximate p-values (with $R = 10,000$) are given in Table S5 (an additional file).
 
 ```{r bootstrap_p_values, echo = F, eval = F, cache=T}
 # calculate resuting bootstrap p-values for statistics
@@ -696,6 +850,22 @@ p_values_diagnosis <- Table_df %>%
   split(., .$Diagnosis) %>%
   lapply(. , Bootstrap_all_stats_all_equation)
 
+p_values_sex <- Table_df %>%
+  mutate(equation = change_names(equation)) %>%
+  split(., .$Sex) %>%
+  lapply(. , Bootstrap_all_stats_all_equation)
+
+p_values_Creat <- Table_df %>%
+  mutate(Creat_cut = cut_number(Creat, 5)) %>% 
+  mutate(equation = change_names(equation)) %>%
+  split(., .$Creat_cut) %>%
+  lapply(. , Bootstrap_all_stats_all_equation)
+
+p_values_date_diff <- Table_df %>%
+  mutate(equation = change_names(equation)) %>%
+  split(., .$Date_diff_group) %>%
+  lapply(. , Bootstrap_all_stats_all_equation)
+
 
 names = names(p_values_centre)
 p_values_centre_all = 
@@ -711,6 +881,21 @@ p_values_diagnosis_all =
 names = names(p_values_pat_type)
 p_values_pat_type_all = 
   lapply(1:length(p_values_pat_type), function(i) mutate(p_values_pat_type[[i]], Patient_type = names[i])) %>%
+  do.call(what = rbind, args = .)
+
+names = names(p_values_sex)
+p_values_sex_all = 
+  lapply(1:length(p_values_sex), function(i) mutate(p_values_sex[[i]], Sex = names[i])) %>%
+  do.call(what = rbind, args = .)
+
+names = names(p_values_Creat)
+p_values_creat_all = 
+  lapply(1:length(p_values_Creat), function(i) mutate(p_values_Creat[[i]], Creat_cut = names[i])) %>%
+  do.call(what = rbind, args = .)
+
+names = names(p_values_date_diff)
+p_values_date_diff_all = 
+  lapply(1:length(p_values_date_diff), function(i) mutate(p_values_date_diff[[i]], Date_diff_group = names[i])) %>%
   do.call(what = rbind, args = .)
 ```
 
@@ -729,22 +914,42 @@ writeData(ST2, 3, as.data.frame(Clean_Results_nonIDMS_data_pat_type),  startCol=
 addWorksheet(ST2, "Results split by diagnosis")
 writeData(ST2, 4, as.data.frame(Clean_Results_nonIDMS_data_diagnosis),  startCol=1, rowNames=FALSE)
 
+addWorksheet(ST2, "Results split by sex")
+writeData(ST2, 5, as.data.frame(Clean_Results_nonIDMS_data_sex),  startCol=1, rowNames=FALSE)
+
+addWorksheet(ST2, "Results split by creatinine")
+writeData(ST2, 6, as.data.frame(Clean_Results_nonIDMS_data_creat),  startCol=1, rowNames=FALSE)
+
+addWorksheet(ST2, "Results split by date diff")
+writeData(ST2, 7, as.data.frame(Clean_Results_nonIDMS_data_date_diff),  startCol=1, rowNames=FALSE)
+
+
+
 addWorksheet(ST2, "Resuls all p-values")
-writeData(ST2, 5, as.data.frame(p_values_all),  startCol=1, rowNames=FALSE)
+writeData(ST2, 8, as.data.frame(p_values_all),  startCol=1, rowNames=FALSE)
 
 addWorksheet(ST2, "Centre p-values")
-writeData(ST2, 6, as.data.frame(p_values_centre_all),  startCol=1, rowNames=FALSE)
+writeData(ST2, 9, as.data.frame(p_values_centre_all),  startCol=1, rowNames=FALSE)
 
 addWorksheet(ST2, "Patient type p-values")
-writeData(ST2, 7, as.data.frame(p_values_pat_type_all),  startCol=1, rowNames=FALSE)
+writeData(ST2, 10, as.data.frame(p_values_pat_type_all),  startCol=1, rowNames=FALSE)
 
 addWorksheet(ST2, "Diagnosis p-values")
-writeData(ST2, 8, as.data.frame(p_values_diagnosis_all),  startCol=1, rowNames=FALSE)
+writeData(ST2, 11, as.data.frame(p_values_diagnosis_all),  startCol=1, rowNames=FALSE)
+
+addWorksheet(ST2, "Sex p-values")
+writeData(ST2, 12, as.data.frame(p_values_sex_all),  startCol=1, rowNames=FALSE)
+
+addWorksheet(ST2, "Creatinine p-values")
+writeData(ST2, 13, as.data.frame(p_values_creat_all),  startCol=1, rowNames=FALSE)
+
+addWorksheet(ST2, "Date diff p-values")
+writeData(ST2, 14, as.data.frame(p_values_date_diff_all),  startCol=1, rowNames=FALSE)
 
 saveWorkbook(ST2, paste0(fig_export_dir, "Supplemental_table_1.xlsx"), overwrite = T)
 ```
 
-
+\newpage
 
 # Published models
 
@@ -752,7 +957,7 @@ This section gives the published models used in this manuscript. In the followin
 \begin{itemize}
 \item $Age$ is the patient's Age in years
 \item $BSA$ is the patient's body surface area in $m^2$, if is estimated for the patients weight and weight using the DuBois DuBois equation [@Janowitz2017a] 
-\item $Scr$ is the patient's blood serum cratinine in $mg/dL$
+\item $Scr$ is the patient's blood serum creatinine in $mg/dL$
 \item $Wt$ is the patient's weight is $kg$
 \end{itemize}
 
@@ -815,7 +1020,7 @@ Cockcroft_equation_2 <- function(Age, Weight, Sex, Scr){
 Cockcroft_equation_2 <- Vectorize(Cockcroft_equation_2)
 ```
 
-## MDRD-186 [@Levey2016]
+## MDRD-186 [@Levey2006]
 
 \begin{equation*}
 GFR = 186 \times Scr^{-1.154} \times Age^{-0.203} \times 0.742 [\text{if female}]
@@ -847,7 +1052,7 @@ Jelliffe_equation <- Vectorize(Jelliffe_equation)
 ```
 
 
-## Wright [@Wright2001a]
+## Wright [@Wright2001]
 
 \begin{equation*}
 GFR = \frac{(6580-38.8\times Age)\times(1-0.168[\text{if female}])\times BSA}{88.42*Scr}

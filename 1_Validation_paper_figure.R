@@ -341,7 +341,7 @@ ggsave(paste0(fig_export_dir, "Non_IDMS_diagnosis_plot.pdf"), plot_diagnosis,
 ################################################################################
 
 plot_data <- Table_df %>%
-  mutate(Age_cut = cut_number(Age, 10)) %>% 
+  mutate(Age_cut = cut_number(Age, 5)) %>% 
   group_by(equation, Age_cut) %>%
   Statistic_summary_withP20_both() %>% 
   ungroup() %>%
@@ -448,7 +448,7 @@ ggsave(paste0(fig_export_dir, "Non_IDMS_age_plot.pdf"), plot_age,
 
 
 plot_data <- Table_df %>%
-  mutate(BSA_cut = cut_number(BSA, 10)) %>% 
+  mutate(BSA_cut = cut_number(BSA, 5)) %>% 
   group_by(equation, BSA_cut) %>%
   Statistic_summary_withP20_both() %>% 
   ungroup() %>%
@@ -528,7 +528,7 @@ p4 <- plot_data  %>%
         legend.title = element_blank(), 
         legend.text = element_text(size = rel(1.2)),
         legend.spacing.x = unit(0.5, "cm")) + 
-  xlab("BSA [m\u00B2]") +  
+  xlab("Body surface area [m\u00B2]") +  
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 plot_BSA <- rbind(ggplotGrob(p2), 
@@ -539,3 +539,215 @@ plot_BSA <- rbind(ggplotGrob(p2),
 
 ggsave(paste0(fig_export_dir, "Non_IDMS_BSA_plot.pdf"), plot_BSA,
        width = 13, height = 10)
+
+
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+# Plot creat split
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+
+
+plot_data <- Table_df %>%
+  mutate(Creat_cut = cut_number(Creat, 5)) %>% 
+  group_by(equation, Creat_cut) %>%
+  Statistic_summary_withP20_both() %>% 
+  ungroup() %>%
+  filter(equation %in% c("WJ", "CKD_adj", "Wright", "MDRD_adj", "Cockcroft")) %>%
+  mutate(equation = factor(equation, 
+                           levels = c("WJ", "CKD_adj", "Wright", "MDRD_adj", 
+                                      "Cockcroft"), 
+                           labels = c("CamGFR", "CKD-EPI", "Wright", "MDRD-186", 
+                                      "Cockcroft-Gault"))) 
+
+p1 <- plot_data %>%
+  ggplot(aes_string(group = "equation", x = "Creat_cut", y = "RMSE")) + 
+  geom_errorbar(aes_string(ymin = "RMSE_lwr", ymax = "RMSE_upr", colour = "equation"), 
+                position= position_dodge(width = .5), width = 0.3, size = 1) + 
+  geom_point(position= position_dodge(width = .5)) + 
+  ggplot_theme() + 
+  scale_color_manual(values = c("CamGFR"  = "#332288", "CKD-EPI" = "#88CCEE",
+                                "Wright" = "#117733", "MDRD-186" = "#DDCC77",
+                                "Cockcroft-Gault" = "#CC6677")) +
+  ylab("RMSE\n(Accuracy)") +
+  theme(legend.position = "none",
+        axis.title.x = element_blank(),
+        text = element_text(size = 14))  +
+  theme(axis.ticks.x = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.line.x = element_blank())
+
+
+p2 <- plot_data %>%
+  ggplot(aes_string(group = "equation", x = "Creat_cut", y = "median")) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_errorbar(aes_string(ymin = "median_lwr", ymax = "median_upr", colour = "equation"), 
+                position= position_dodge(width = .5), width = 0.3, size = 1) + 
+  geom_point(position= position_dodge(width = .5)) + 
+  ggplot_theme() + 
+  scale_color_manual(values = c("CamGFR"  = "#332288", "CKD-EPI" = "#88CCEE",
+                                "Wright" = "#117733", "MDRD-186" = "#DDCC77",
+                                "Cockcroft-Gault" = "#CC6677")) +
+  ylab("Residual median\n(Bias)") + 
+  theme(legend.position = "none",
+        axis.title.x = element_blank(),
+        text = element_text(size = 14))  +
+  theme(axis.ticks.x = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.line.x = element_blank())
+
+p3 <- plot_data %>%
+  ggplot(aes_string(group = "equation", x = "Creat_cut", y = "IQR")) + 
+  geom_errorbar(aes_string(ymin = "IQR_lwr", ymax = "IQR_upr", colour = "equation"), 
+                position= position_dodge(width = .5), width = 0.3, size = 1) + 
+  geom_point(position= position_dodge(width = .5)) + 
+  ggplot_theme() + 
+  scale_color_manual(values = c("CamGFR"  = "#332288", "CKD-EPI" = "#88CCEE",
+                                "Wright" = "#117733", "MDRD-186" = "#DDCC77",
+                                "Cockcroft-Gault" = "#CC6677")) +
+  ylab("Residual IQR\n(Precision)") + 
+  theme(legend.position = "none",
+        axis.title.x = element_blank(),
+        text = element_text(size = 14))  +
+  theme(axis.ticks.x = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.line.x = element_blank())
+
+
+p4 <- plot_data  %>%
+  ggplot(aes_string(group = "equation", x = "Creat_cut", y = "P20")) + 
+  geom_errorbar(aes_string(ymin = "P20_lwr", ymax = "P20_upr", colour = "equation"), 
+                position= position_dodge(width = .5), width = 0.3, size = 1) + 
+  geom_point(position= position_dodge(width = .5)) + 
+  ggplot_theme() + 
+  scale_color_manual(values = c("CamGFR"  = "#332288", "CKD-EPI" = "#88CCEE",
+                                "Wright" = "#117733", "MDRD-186" = "#DDCC77",
+                                "Cockcroft-Gault" = "#CC6677")) +
+  ylab("1 - P20\n(Clinical robustness)") +
+  theme(legend.position = "bottom", 
+        text = element_text(size = 14), 
+        legend.title = element_blank(), 
+        legend.text = element_text(size = rel(1.2)),
+        legend.spacing.x = unit(0.5, "cm")) + 
+  xlab("Creatinine [mg/dL]") +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+plot_Creat <- rbind(ggplotGrob(p2), 
+                  ggplotGrob(p3), 
+                  ggplotGrob(p1), 
+                  ggplotGrob(p4), 
+                  size = "last")
+
+ggsave(paste0(fig_export_dir, "Non_IDMS_BSA_plot.pdf"), plot_BSA,
+       width = 13, height = 10)
+
+
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+# Plot date diff
+################################################################################
+################################################################################
+################################################################################
+################################################################################
+
+
+plot_data <- Results_nonIDMS_data_date_diff %>%
+  ungroup() %>%
+  filter(equation %in% c("WJ", "CKD_adj", "Wright", "MDRD_adj", "Cockcroft")) %>%
+  mutate(equation = factor(equation, 
+                           levels = c("WJ", "CKD_adj", "Wright", "MDRD_adj", 
+                                      "Cockcroft"), 
+                           labels = c("CamGFR", "CKD-EPI", "Wright", "MDRD-186", 
+                                      "Cockcroft-Gault"))) %>%
+  mutate(Date_diff_group = factor(Date_diff_group, 
+                                  levels = c("(-31,-8]", "(-8,-3]", "(-3,-1]", "(-1,0]", "(0,2]", 
+                                             "(2,7]", "(7,30]", "NA"), 
+                                  labels = c("-30:-8", "-7:-3", "-2:-1", "0", "1:2", 
+                                             "3:7", "8:30", "NA"))) %>%
+  filter(Date_diff_group != "NA")
+
+
+p1 <- plot_data %>%
+  ggplot(aes_string(group = "Date_diff_group", x = "equation", y = "RMSE")) + 
+  geom_errorbar(aes_string(ymin = "RMSE_lwr", ymax = "RMSE_upr", colour = "Date_diff_group"), 
+                position= position_dodge(width = .5), width = 0.3, size = 1) + 
+  geom_point(position= position_dodge(width = .5)) + 
+  ggplot_theme() + 
+  scale_color_manual(values = inlmisc::GetColors( 7, scheme = "sunset")) +
+  ylab("RMSE\n(Accuracy)") +
+  theme(legend.position = "none",
+        axis.title.x = element_blank(),
+        text = element_text(size = 14))  +
+  theme(axis.ticks.x = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.line.x = element_blank())
+
+
+p2 <- plot_data %>%
+  ggplot(aes_string(group = "Date_diff_group", x = "equation", y = "median")) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_errorbar(aes_string(ymin = "median_lwr", ymax = "median_upr", colour = "Date_diff_group"), 
+                position= position_dodge(width = .5), width = 0.3, size = 1) + 
+  geom_point(position= position_dodge(width = .5)) + 
+  ggplot_theme() + 
+  scale_color_manual(values = inlmisc::GetColors( 7, scheme = "sunset")) +
+  ylab("Residual median\n(Bias)") + 
+  theme(legend.position = "none",
+        axis.title.x = element_blank(),
+        text = element_text(size = 14))  +
+  theme(axis.ticks.x = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.line.x = element_blank())
+
+p3 <- plot_data %>%
+  ggplot(aes_string(group = "Date_diff_group", x = "equation", y = "IQR")) + 
+  geom_errorbar(aes_string(ymin = "IQR_lwr", ymax = "IQR_upr", colour = "Date_diff_group"), 
+                position= position_dodge(width = .5), width = 0.3, size = 1) + 
+  geom_point(position= position_dodge(width = .5)) + 
+  ggplot_theme() + 
+  scale_color_manual(values = inlmisc::GetColors( 7, scheme = "sunset")) +
+  ylab("Residual IQR\n(Precision)") + 
+  theme(legend.position = "none",
+        axis.title.x = element_blank(),
+        text = element_text(size = 14))  +
+  theme(axis.ticks.x = element_blank(), 
+        axis.text.x = element_blank(), 
+        axis.line.x = element_blank())
+
+
+p4 <- plot_data  %>%
+  ggplot(aes_string(group = "Date_diff_group", x = "equation", y = "P20")) + 
+  geom_errorbar(aes_string(ymin = "P20_lwr", ymax = "P20_upr", colour = "Date_diff_group"), 
+                position= position_dodge(width = .5), width = 0.3, size = 1) + 
+  geom_point(position= position_dodge(width = .5)) + 
+  ggplot_theme() + 
+  scale_color_manual(values = inlmisc::GetColors( 7, scheme = "sunset")) +
+  labs(colour="GFR Date - Creatinien Date [days]") + 
+  guides(colour = guide_legend(title.position = "top", nrow = 1)) +
+  ylab("1 - P20\n(Clinical robustness)") +
+  theme(legend.position = "bottom", 
+        text = element_text(size = 14), 
+        legend.text = element_text(size = rel(1.2)),
+        legend.spacing.x = unit(0.5, "cm")) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank())
+
+plot_date_diff <- rbind(ggplotGrob(p2), 
+                        ggplotGrob(p3), 
+                        ggplotGrob(p1), 
+                        ggplotGrob(p4), 
+                        size = "last")
+ggsave(paste0(fig_export_dir, "Non_IDMS_date_diff_plot.pdf"), plot_BSA,
+       width = 13, height = 10)
+
+
+
+
+
